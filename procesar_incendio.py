@@ -108,7 +108,7 @@ def detectar_fecha_y_tifs(carpeta: Path):
         {('p'|'c', day_offset): Path}
     a partir de los TIF encontrados.
     """
-    tifs = list(carpeta.glob("down_*_peligro_*.tif"))
+    tifs = list(carpeta.rglob("down_*_peligro_*.tif"))
     if not tifs:
         raise FileNotFoundError(f"No se encontraron TIF en {carpeta}")
 
@@ -227,7 +227,7 @@ def subir_a_datawrapper(csv_path: Path):
     Documentación: https://developer.datawrapper.de/reference/putchartsiddata
     """
     api_key  = os.getenv("DW_API_KEY")
-    chart_id = os.getenv("DW_CHART_ID", "OU4ZS")  # fallback al ID conocido
+    chart_id = os.getenv("DW_CHART_ID", "EqqfeFodYj")  # fallback al ID conocido
 
     if not api_key:
         log.info("DW_API_KEY no definido — se omite la subida a Datawrapper.")
