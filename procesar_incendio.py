@@ -11,9 +11,14 @@ Uso:
 Requiere:
     pip install requests rasterio geopandas scipy numpy
 
-Variables de entorno necesarias para la subida a Datawrapper:
+Variables de entorno:
     DW_API_KEY   -> API key de Datawrapper (datawrapper.de/account/api-tokens)
-    DW_CHART_ID  -> ID de la visualización (aparece en la URL al editar, ej: EqqfeFodYj)
+    DW_CHART_ID  -> ID de la visualización (por defecto: OU4ZS)
+
+Optimización:
+    La primera vez lee los shapefiles del IGN (shp/) y genera municipios.geojson.
+    Las siguientes ejecuciones usan directamente ese GeoJSON, que es más rápido.
+    Si necesitas regenerar el GeoJSON, borra el archivo y vuelve a ejecutar.
 """
 
 import os
@@ -36,38 +41,31 @@ from scipy import stats
 # Configuración
 # ---------------------------------------------------------------------------
 
-AEMET_URL = "https://www.aemet.es/es/api-eltiempo/incendios/download"
-
-# Shapefiles del IGN — se asumen descargados y en esta ruta relativa.
-# Descarga en: https://centrodedescargas.cnig.es/CentroDescargas/
-SHP_PEN = Path("shp/recintos_municipales_inspire_peninbal_etrs89.shp")
-SHP_CAN = Path("shp/recintos_municipales_inspire_canarias_regcan95.shp")
-
-OUTPUT_CSV = Path("output/riesgo_incendio_municipios.csv")
+AEMET_URL    = "https://www.aemet.es/es/api-eltiempo/incendios/download"
+SHP_PEN      = Path("shp/recintos_municipales_inspire_peninbal_etrs89.shp")
+SHP_CAN      = Path("shp/recintos_municipales_inspire_canarias_regcan95.shp")
+GEOJSON_PATH = Path("municipios.geojson")   # caché generada una sola vez
+OUTPUT_CSV   = Path("output/riesgo_incendio_municipios.csv")
 
 RISK_LABELS = {
-    1: "Muy bajo",
-    2: "Bajo",
-    3: "Moderado",
-    4: "Alto",
-    5: "Muy alto",
-    6: "Extremo",
+    1: "Muy bajo", 2: "Bajo", 3: "Moderado",
+    4: "Alto",     5: "Muy alto", 6: "Extremo",
 }
 
 PROV_NAMES = {
-    "01": "Álava", "02": "Albacete", "03": "Alicante", "04": "Almería",
-    "05": "Ávila", "06": "Badajoz", "07": "Baleares", "08": "Barcelona",
-    "09": "Burgos", "10": "Cáceres", "11": "Cádiz", "12": "Castellón",
-    "13": "Ciudad Real", "14": "Córdoba", "15": "A Coruña", "16": "Cuenca",
-    "17": "Girona", "18": "Granada", "19": "Guadalajara", "20": "Guipúzcoa",
-    "21": "Huelva", "22": "Huesca", "23": "Jaén", "24": "León",
-    "25": "Lleida", "26": "La Rioja", "27": "Lugo", "28": "Madrid",
-    "29": "Málaga", "30": "Murcia", "31": "Navarra", "32": "Ourense",
-    "33": "Asturias", "34": "Palencia", "35": "Las Palmas", "36": "Pontevedra",
-    "37": "Salamanca", "38": "Tenerife", "39": "Cantabria", "40": "Segovia",
-    "41": "Sevilla", "42": "Soria", "43": "Tarragona", "44": "Teruel",
-    "45": "Toledo", "46": "Valencia", "47": "Valladolid", "48": "Vizcaya",
-    "49": "Zamora", "50": "Zaragoza", "51": "Ceuta", "52": "Melilla",
+    "01": "Álava",      "02": "Albacete",    "03": "Alicante",  "04": "Almería",
+    "05": "Ávila",      "06": "Badajoz",     "07": "Baleares",  "08": "Barcelona",
+    "09": "Burgos",     "10": "Cáceres",     "11": "Cádiz",     "12": "Castellón",
+    "13": "Ciudad Real","14": "Córdoba",     "15": "A Coruña",  "16": "Cuenca",
+    "17": "Girona",     "18": "Granada",     "19": "Guadalajara","20": "Guipúzcoa",
+    "21": "Huelva",     "22": "Huesca",      "23": "Jaén",      "24": "León",
+    "25": "Lleida",     "26": "La Rioja",    "27": "Lugo",      "28": "Madrid",
+    "29": "Málaga",     "30": "Murcia",      "31": "Navarra",   "32": "Ourense",
+    "33": "Asturias",   "34": "Palencia",    "35": "Las Palmas","36": "Pontevedra",
+    "37": "Salamanca",  "38": "Tenerife",    "39": "Cantabria", "40": "Segovia",
+    "41": "Sevilla",    "42": "Soria",       "43": "Tarragona", "44": "Teruel",
+    "45": "Toledo",     "46": "Valencia",    "47": "Valladolid","48": "Vizcaya",
+    "49": "Zamora",     "50": "Zaragoza",    "51": "Ceuta",     "52": "Melilla",
 }
 
 logging.basicConfig(
@@ -79,11 +77,10 @@ log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# 1. Descarga y extracción
+# 1. Descarga y extracción de TIFs
 # ---------------------------------------------------------------------------
 
-def descargar_zip(url: str, destino: Path) -> Path:
-    """Descarga el tar.gz de AEMET y lo extrae en destino."""
+def descargar_tifs(url: str, destino: Path) -> Path:
     log.info("Descargando datos de AEMET/MITECO...")
     r = requests.get(url, timeout=60, stream=True)
     r.raise_for_status()
@@ -93,26 +90,18 @@ def descargar_zip(url: str, destino: Path) -> Path:
             tmp.write(chunk)
         tmp_path = Path(tmp.name)
 
-    log.info(f"Extrayendo en {destino}...")
     destino.mkdir(parents=True, exist_ok=True)
     with tarfile.open(tmp_path) as tar:
         tar.extractall(destino)
     tmp_path.unlink()
-
     return destino
 
 
 def detectar_fecha_y_tifs(carpeta: Path):
-    """
-    Detecta la fecha base y devuelve un dict:
-        {('p'|'c', day_offset): Path}
-    a partir de los TIF encontrados.
-    """
     tifs = list(carpeta.rglob("down_*_peligro_*.tif"))
     if not tifs:
         raise FileNotFoundError(f"No se encontraron TIF en {carpeta}")
 
-    # Extraer fecha del primer nombre: down_YYYYMMDD_peligro_p_D00.tif
     m = re.search(r"down_(\d{8})_", tifs[0].name)
     if not m:
         raise ValueError(f"Nombre de archivo inesperado: {tifs[0].name}")
@@ -122,20 +111,23 @@ def detectar_fecha_y_tifs(carpeta: Path):
     for tif in tifs:
         m2 = re.search(r"peligro_([pc])_D0(\d)", tif.name)
         if m2:
-            zona = m2.group(1)   # 'p' = península, 'c' = canarias
-            dia = int(m2.group(2))
-            tif_map[(zona, dia)] = tif
+            tif_map[(m2.group(1), int(m2.group(2)))] = tif
 
-    log.info(f"Fecha base: {fecha_base.date()}  |  TIFs encontrados: {len(tif_map)}")
+    log.info(f"Fecha base: {fecha_base.date()}  |  TIFs: {len(tif_map)}")
     return fecha_base, tif_map
 
 
 # ---------------------------------------------------------------------------
-# 2. Carga de municipios IGN
+# 2. Municipios: GeoJSON cacheado o generado desde shapefiles
 # ---------------------------------------------------------------------------
 
-def cargar_municipios(shp_pen: Path, shp_can: Path) -> gpd.GeoDataFrame:
-    log.info("Cargando shapefiles del IGN...")
+def construir_geojson(shp_pen: Path, shp_can: Path, geojson_path: Path) -> gpd.GeoDataFrame:
+    """
+    Lee los shapefiles del IGN, extrae solo nombre + provincia + geometría
+    simplificada y guarda el resultado como GeoJSON para usos futuros.
+    Solo se ejecuta si el GeoJSON no existe todavía.
+    """
+    log.info("Generando municipios.geojson desde shapefiles del IGN (solo la primera vez)...")
     pen = gpd.read_file(shp_pen).to_crs("EPSG:4326")
     can = gpd.read_file(shp_can).to_crs("EPSG:4326")
     gdf = gpd.GeoDataFrame(
@@ -144,22 +136,42 @@ def cargar_municipios(shp_pen: Path, shp_can: Path) -> gpd.GeoDataFrame:
     )
     gdf["prov_code"] = gdf["NATCODE"].str[6:8]
     gdf["provincia"] = gdf["prov_code"].map(PROV_NAMES)
-    log.info(f"Municipios cargados: {len(gdf)}")
+
+    # Conservar solo las columnas necesarias
+    gdf = gdf[["NAMEUNIT", "provincia", "geometry"]].copy()
+    gdf.columns = ["nombre", "provincia", "geometry"]
+
+    # Simplificar geometrías para reducir tamaño (~0.001 grados ≈ 100m)
+    gdf["geometry"] = gdf["geometry"].simplify(0.001, preserve_topology=True)
+
+    geojson_path.parent.mkdir(parents=True, exist_ok=True)
+    gdf.to_file(geojson_path, driver="GeoJSON")
+    log.info(f"municipios.geojson guardado ({geojson_path.stat().st_size // 1024} KB, {len(gdf)} municipios)")
     return gdf
+
+
+def cargar_municipios() -> gpd.GeoDataFrame:
+    """
+    Carga municipios desde el GeoJSON cacheado si existe,
+    o lo genera desde los shapefiles del IGN si no.
+    """
+    if GEOJSON_PATH.exists():
+        log.info(f"Cargando {GEOJSON_PATH} (caché)...")
+        return gpd.read_file(GEOJSON_PATH)
+    else:
+        log.info("municipios.geojson no encontrado — leyendo shapefiles del IGN...")
+        return construir_geojson(SHP_PEN, SHP_CAN, GEOJSON_PATH)
 
 
 # ---------------------------------------------------------------------------
 # 3. Extracción de riesgo por polígono
 # ---------------------------------------------------------------------------
 
-def extraer_riesgo(geom, tif_path: Path) -> int | None:
-    """
-    Devuelve la moda de los píxeles válidos (>0) del raster
-    dentro del polígono. Devuelve None si no hay píxeles.
-    """
+def extraer_riesgo(geom, tif_path: Path | None) -> int | None:
+    if tif_path is None:
+        return None
     try:
         with rasterio.open(tif_path) as src:
-            # Comprobación rápida de bbox antes de enmascarar
             b = src.bounds
             gb = geom.bounds
             if gb[2] < b.left or gb[0] > b.right or gb[3] < b.bottom or gb[1] > b.top:
@@ -184,17 +196,17 @@ def generar_csv(gdf: gpd.GeoDataFrame, tif_map: dict, fecha_base: datetime, outp
 
     output.parent.mkdir(parents=True, exist_ok=True)
     filas = []
-
     total = len(gdf)
+
     for i, row in gdf.iterrows():
-        nombre = row["NAMEUNIT"]
-        prov = row["provincia"] or ""
-        geom = row.geometry
+        nombre  = row["nombre"]
+        prov    = row["provincia"] or ""
+        geom    = row.geometry
 
         vals = []
         for d in range(n_dias):
-            v = extraer_riesgo(geom, tif_map.get(("p", d))) or \
-                extraer_riesgo(geom, tif_map.get(("c", d))) or 1
+            v = (extraer_riesgo(geom, tif_map.get(("p", d))) or
+                 extraer_riesgo(geom, tif_map.get(("c", d))) or 1)
             vals.append(v)
 
         out_row = {"Municipio": f"{nombre} ({prov})" if prov else nombre}
@@ -213,7 +225,6 @@ def generar_csv(gdf: gpd.GeoDataFrame, tif_map: dict, fecha_base: datetime, outp
         writer.writerows(filas)
 
     log.info(f"CSV generado: {output}  ({len(filas)} municipios)")
-    return filas
 
 
 # ---------------------------------------------------------------------------
@@ -221,46 +232,27 @@ def generar_csv(gdf: gpd.GeoDataFrame, tif_map: dict, fecha_base: datetime, outp
 # ---------------------------------------------------------------------------
 
 def subir_a_datawrapper(csv_path: Path):
-    """
-    Sube el CSV a Datawrapper y republica la visualización.
-    Requiere DW_API_KEY y DW_CHART_ID en variables de entorno.
-    Documentación: https://developer.datawrapper.de/reference/putchartsiddata
-    """
     api_key  = os.getenv("DW_API_KEY")
-    chart_id = os.getenv("DW_CHART_ID", "EqqfeFodYj")  # fallback al ID conocido
+    chart_id = os.getenv("DW_CHART_ID", "OU4ZS")
 
     if not api_key:
         log.info("DW_API_KEY no definido — se omite la subida a Datawrapper.")
         return
 
-    headers = {"Authorization": f"Bearer {api_key}"}
-
-    # Paso 1: subir los datos
     log.info(f"Subiendo datos a Datawrapper (chart {chart_id})...")
     with open(csv_path, encoding="utf-8-sig") as f:
         csv_text = f.read()
 
     r = requests.put(
         f"https://api.datawrapper.de/v3/charts/{chart_id}/data",
-        headers={**headers, "Content-Type": "text/csv"},
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "text/csv"},
         data=csv_text.encode("utf-8"),
         timeout=60,
     )
-    if not r.ok:
-        log.error(f"Error al subir datos: {r.status_code} {r.text}")
-        return
-    log.info("Datos subidos correctamente.")
-
-    # Paso 2: republicar para que el embed se actualice
-    r2 = requests.post(
-        f"https://api.datawrapper.de/v3/charts/{chart_id}/publish",
-        headers=headers,
-        timeout=60,
-    )
-    if r2.ok:
-        log.info("Visualización republicada correctamente.")
+    if r.ok:
+        log.info("Datos subidos correctamente a Datawrapper.")
     else:
-        log.error(f"Error al republicar: {r2.status_code} {r2.text}")
+        log.error(f"Error al subir datos: {r.status_code} {r.text}")
 
 
 # ---------------------------------------------------------------------------
@@ -268,10 +260,11 @@ def subir_a_datawrapper(csv_path: Path):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    gdf = cargar_municipios()
+
     with tempfile.TemporaryDirectory() as tmpdir:
-        tif_dir = descargar_zip(AEMET_URL, Path(tmpdir) / "tifs")
+        tif_dir = descargar_tifs(AEMET_URL, Path(tmpdir) / "tifs")
         fecha_base, tif_map = detectar_fecha_y_tifs(tif_dir)
-        gdf = cargar_municipios(SHP_PEN, SHP_CAN)
         generar_csv(gdf, tif_map, fecha_base, OUTPUT_CSV)
 
     subir_a_datawrapper(OUTPUT_CSV)
