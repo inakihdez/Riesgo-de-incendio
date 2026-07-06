@@ -1,0 +1,41 @@
+name: Actualizar buscador riesgo incendio
+
+on:
+  schedule:
+    # Tres ejecuciones diarias (hora UTC): 5h, 11h, 17h -> 7h, 13h, 19h CEST
+    - cron: "0 5 * * *"
+    - cron: "0 11 * * *"
+    - cron: "0 17 * * *"
+  workflow_dispatch:   # permite lanzarlo manualmente desde GitHub
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install requests rasterio geopandas scipy numpy
+
+      - name: Ejecutar script
+        env:
+          DW_API_KEY:  ${{ secrets.DW_API_KEY }}
+          DW_CHART_ID: EqqfeFodYj
+        run: python procesar_incendio.py
+
+      - name: Commit y push del CSV actualizado
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add output/riesgo_incendio_municipios.csv
+          git diff --cached --quiet || git commit -m "Datos actualizados $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push
