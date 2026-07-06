@@ -227,7 +227,7 @@ def subir_a_datawrapper(csv_path: Path):
     Documentación: https://developer.datawrapper.de/reference/putchartsiddata
     """
     api_key  = os.getenv("DW_API_KEY")
-    chart_id = os.getenv("DW_CHART_ID", "EqqfeFodYj")  # fallback al ID conocido
+    chart_id = os.getenv("DW_CHART_ID", "OU4ZS")  # fallback al ID conocido
 
     if not api_key:
         log.info("DW_API_KEY no definido — se omite la subida a Datawrapper.")
