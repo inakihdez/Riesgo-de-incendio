@@ -271,9 +271,8 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmpdir:
         tif_dir = descargar_zip(AEMET_URL, Path(tmpdir) / "tifs")
         fecha_base, tif_map = detectar_fecha_y_tifs(tif_dir)
+        gdf = cargar_municipios(SHP_PEN, SHP_CAN)
+        generar_csv(gdf, tif_map, fecha_base, OUTPUT_CSV)
 
-    gdf = cargar_municipios(SHP_PEN, SHP_CAN)
-    generar_csv(gdf, tif_map, fecha_base, OUTPUT_CSV)
     subir_a_datawrapper(OUTPUT_CSV)
-
     log.info("Proceso completado.")
