@@ -13,12 +13,8 @@ Requiere:
 
 Variables de entorno:
     DW_API_KEY   -> API key de Datawrapper (datawrapper.de/account/api-tokens)
-    DW_CHART_ID  -> ID de la visualización (por defecto: OU4ZS)
+    DW_CHART_ID  -> ID de la visualización 
 
-Optimización:
-    La primera vez lee los shapefiles del IGN (shp/) y genera municipios.geojson.
-    Las siguientes ejecuciones usan directamente ese GeoJSON, que es más rápido.
-    Si necesitas regenerar el GeoJSON, borra el archivo y vuelve a ejecutar.
 """
 
 import os
