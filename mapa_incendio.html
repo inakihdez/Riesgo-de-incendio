@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mapa de riesgo de incendio forestal — España</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+</head>
+<body>
+
+<div id="grafico-principal">
+
+  <style>
+    #grafico-principal {
+      font-family: 'Heebo', sans-serif;
+      max-width: 860px;
+      margin: 0 auto;
+      background: #ffffff;
+      color: #1a1a1a;
+    }
+    #grafico-principal * { box-sizing: border-box; }
+
+    #grafico-principal .gp-titulo {
+      font-size: 1.5rem;
+      font-weight: bold;
+      margin: 0 0 6px 0;
+      color: #1a1a1a;
+    }
+    #grafico-principal .gp-subtitulo {
+      font-size: 1.05rem;
+      font-weight: normal;
+      margin: 0 0 12px 0;
+      color: #929292;
+      line-height: 1.35;
+    }
+
+    #grafico-principal .gp-buscador {
+      position: relative;
+      max-width: 340px;
+      margin: 0 0 10px 0;
+    }
+    #grafico-principal .gp-buscador input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #cccccc;
+      font-family: 'Heebo', sans-serif;
+      font-size: 1rem;
+      font-weight: normal;
+      color: #1a1a1a;
+      background: #ffffff;
+    }
+    #grafico-principal .gp-buscador input:focus {
+      outline: none;
+      border-color: #cc0000;
+    }
+    #grafico-principal .gp-sugerencias {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #ffffff;
+      border: 1px solid #cccccc;
+      border-top: none;
+      max-height: 260px;
+      overflow-y: auto;
+      z-index: 20;
+    }
+    #grafico-principal .gp-sugerencias.visible { display: block; }
+    #grafico-principal .gp-sugerencia {
+      padding: 8px 10px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    #grafico-principal .gp-sugerencia span {
+      color: #666666;
+    }
+    #grafico-principal .gp-sugerencia:hover,
+    #grafico-principal .gp-sugerencia.activa {
+      background: #f2f2f2;
+    }
+
+    #grafico-principal .gp-mapa-contenedor {
+      position: relative;
+      width: 100%;
+      height: 560px;
+      border: 1px solid #e0e0e0;
+    }
+    #grafico-principal #gp-mapa {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Leyenda de niveles de riesgo, superpuesta al mapa */
+    #grafico-principal .gp-leyenda {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid #e0e0e0;
+      padding: 8px 10px;
+      font-size: 0.78rem;
+      z-index: 5;
+      max-width: 220px;
+    }
+    #grafico-principal .gp-leyenda-titulo {
+      font-weight: bold;
+      margin-bottom: 4px;
+      font-size: 0.75rem;
+    }
+    #grafico-principal .gp-leyenda-fila {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 2px;
+    }
+    #grafico-principal .gp-leyenda-color {
+      width: 12px;
+      height: 12px;
+      flex-shrink: 0;
+      border-radius: 2px;
+    }
+
+    /* Aviso de fecha */
+    #grafico-principal .gp-fecha {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid #e0e0e0;
+      padding: 5px 10px;
+      font-size: 0.8rem;
+      font-weight: bold;
+      z-index: 5;
+    }
+
+    #grafico-principal .gp-pie {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+      font-size: 1rem;
+      color: #666666;
+    }
+
+    @media (max-width: 400px) {
+      #grafico-principal .gp-mapa-contenedor { height: 420px; }
+      #grafico-principal .gp-titulo { font-size: 1.25rem; }
+      #grafico-principal .gp-pie { flex-direction: column; }
+      #grafico-principal .gp-buscador { max-width: 100%; }
+      #grafico-principal .gp-leyenda { max-width: 160px; font-size: 0.7rem; }
+    }
+  </style>
+
+  <h2 class="gp-titulo">Riesgo de incendio forestal en España</h2>
+  <p class="gp-subtitulo">Mapa de peligro de incendio del MITECO para el día de hoy</p>
+
+  <div class="gp-buscador">
+    <input type="text" id="gp-input-buscador" placeholder="Buscar municipio…" autocomplete="off">
+    <div class="gp-sugerencias" id="gp-sugerencias"></div>
+  </div>
+
+  <div class="gp-mapa-contenedor">
+    <div id="gp-mapa"></div>
+    <div class="gp-fecha" id="gp-fecha">Cargando fecha…</div>
+    <div class="gp-leyenda">
+      <div class="gp-leyenda-titulo">Nivel de peligro</div>
+      <div class="gp-leyenda-fila"><span class="gp-leyenda-color" style="background:#4b96e3"></span>Muy bajo</div>
+      <div class="gp-leyenda-fila"><span class="gp-leyenda-color" style="background:#51d1f6"></span>Bajo</div>
+      <div class="gp-leyenda-fila"><span class="gp-leyenda-color" style="background:#57e520"></span>Moderado</div>
+      <div class="gp-leyenda-fila"><span class="gp-leyenda-color" style="background:#f9fb2f"></span>Alto</div>
+      <div class="gp-leyenda-fila"><span class="gp-leyenda-color" style="background:#ef8504"></span>Muy alto</div>
+      <div class="gp-leyenda-fila"><span class="gp-leyenda-color" style="background:#f52300"></span>Extremo</div>
+    </div>
+  </div>
+
+  <div class="gp-pie">
+    <span>Fuente: MITECO / AEMET</span>
+    <span>Elaborado por Europa Press</span>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    // Ruta al PNG y metadatos generados por procesar_incendio.py
+    // Ambos están en el mismo directorio que este HTML en GitHub Pages
+    var META_URL = 'output/mapa_meta.json';
+
+    // ─────────────────────────────────────────────────────────────
+    // 1. MAPA BASE
+    // ─────────────────────────────────────────────────────────────
+
+    var map = new maplibregl.Map({
+      container: 'gp-mapa',
+      style: 'https://tiles.openfreemap.org/styles/positron',
+      center: [-4.5, 39.9],
+      zoom: 5.2,
+      attributionControl: { compact: true }
+    });
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+    // Etiquetas en español cuando el estilo las tenga disponibles
+    map.on('load', function () {
+      map.getStyle().layers.forEach(function (capa) {
+        if (capa.type === 'symbol' && capa.layout && capa.layout['text-field']) {
+          try {
+            map.setLayoutProperty(capa.id, 'text-field',
+              ['coalesce', ['get', 'name:es'], ['get', 'name']]);
+          } catch (e) { /* capa sin campo name */ }
+        }
+      });
+
+      // ───────────────────────────────────────────────────────────
+      // 2. CARGAR Y SUPERPONER EL RASTER DE INCENDIO
+      // ───────────────────────────────────────────────────────────
+
+      fetch(META_URL)
+        .then(function (r) {
+          if (!r.ok) throw new Error('No se pudo cargar mapa_meta.json (HTTP ' + r.status + ')');
+          return r.json();
+        })
+        .then(function (meta) {
+          // meta.bounds = [[south, west], [north, east]]
+          var sw = meta.bounds[0];
+          var ne = meta.bounds[1];
+          var pngUrl = 'output/' + meta.png;
+
+          map.addSource('riesgo-incendio', {
+            type: 'image',
+            url: pngUrl,
+            coordinates: [
+              [sw[1], ne[0]],  // esquina superior izquierda [lon, lat]
+              [ne[1], ne[0]],  // esquina superior derecha
+              [ne[1], sw[0]],  // esquina inferior derecha
+              [sw[1], sw[0]]   // esquina inferior izquierda
+            ]
+          });
+
+          map.addLayer({
+            id: 'riesgo-incendio-layer',
+            type: 'raster',
+            source: 'riesgo-incendio',
+            paint: { 'raster-opacity': 0.75 }
+          });
+
+          document.getElementById('gp-fecha').textContent = 'Datos del ' + meta.fecha;
+        })
+        .catch(function (err) {
+          console.error('Error cargando el mapa de riesgo:', err);
+          document.getElementById('gp-fecha').textContent = 'No se pudieron cargar los datos';
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // 3. BUSCADOR DE MUNICIPIOS (geocodificador Photon)
+    // ─────────────────────────────────────────────────────────────
+
+    (function iniciarBuscador() {
+      var input = document.getElementById('gp-input-buscador');
+      var panel = document.getElementById('gp-sugerencias');
+      var sugerencias = [];
+      var indiceActivo = -1;
+      var temporizador = null;
+      var controlador = null;
+
+      var PHOTON_URL = 'https://photon.komoot.io/api/?lang=default&limit=6&bbox=-10.0,35.5,4.6,44.3&q=';
+
+      function cerrar() {
+        panel.classList.remove('visible');
+        panel.innerHTML = '';
+        sugerencias = [];
+        indiceActivo = -1;
+      }
+
+      function seleccionar(i) {
+        var s = sugerencias[i];
+        if (!s) return;
+        input.value = s.nombre;
+        cerrar();
+        map.flyTo({ center: [s.lon, s.lat], zoom: 10.5, duration: 1500 });
+      }
+
+      function renderizar() {
+        if (sugerencias.length === 0) { cerrar(); return; }
+        panel.innerHTML = sugerencias.map(function (s, i) {
+          return '<div class="gp-sugerencia' + (i === indiceActivo ? ' activa' : '') +
+                 '" data-i="' + i + '">' + s.nombre +
+                 (s.detalle ? ' <span>' + s.detalle + '</span>' : '') + '</div>';
+        }).join('');
+        panel.classList.add('visible');
+      }
+
+      async function buscar(texto) {
+        if (controlador) controlador.abort();
+        controlador = new AbortController();
+        try {
+          var resp = await fetch(PHOTON_URL + encodeURIComponent(texto),
+                                 { signal: controlador.signal });
+          if (!resp.ok) {
+            console.warn('Buscador: Photon HTTP ' + resp.status);
+            return;
+          }
+          var json = await resp.json();
+          sugerencias = (json.features || [])
+            .filter(function (f) {
+              var pr = f.properties || {};
+              return pr.osm_key === 'place' || pr.osm_key === 'boundary';
+            })
+            .map(function (f) {
+              var pr = f.properties;
+              var detalle = [pr.county || pr.state, pr.country]
+                            .filter(Boolean).join(', ');
+              return {
+                nombre: pr.name,
+                detalle: detalle,
+                lon: f.geometry.coordinates[0],
+                lat: f.geometry.coordinates[1]
+              };
+            });
+          indiceActivo = -1;
+          renderizar();
+        } catch (e) {
+          if (e.name !== 'AbortError') console.warn('Buscador: ' + e.message);
+        }
+      }
+
+      input.addEventListener('input', function () {
+        var texto = input.value.trim();
+        clearTimeout(temporizador);
+        if (texto.length < 3) { cerrar(); return; }
+        temporizador = setTimeout(function () { buscar(texto); }, 300);
+      });
+
+      input.addEventListener('keydown', function (e) {
+        if (!panel.classList.contains('visible')) return;
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          indiceActivo = (indiceActivo + 1) % sugerencias.length;
+          renderizar();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          indiceActivo = (indiceActivo - 1 + sugerencias.length) % sugerencias.length;
+          renderizar();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          seleccionar(indiceActivo >= 0 ? indiceActivo : 0);
+        } else if (e.key === 'Escape') {
+          cerrar();
+        }
+      });
+
+      panel.addEventListener('mousedown', function (e) {
+        var el = e.target.closest('.gp-sugerencia');
+        if (el) { e.preventDefault(); seleccionar(Number(el.dataset.i)); }
+      });
+
+      document.addEventListener('click', function (e) {
+        if (!e.target.closest('#grafico-principal .gp-buscador')) cerrar();
+      });
+    })();
+
+  })();
+  </script>
+
+</div>
+
+</body>
+</html>
