@@ -5,7 +5,7 @@ on:
     # 09:00 UTC = 11:00 hora de Madrid en verano (CEST = UTC+2)
     # En invierno (CET = UTC+1) serían las 10:00h — ajustar a "0 10 * * *" en octubre
     - cron: "0 9 * * *"
-  workflow_dispatch:   # permite lanzarlo manualmente desde GitHub 
+  workflow_dispatch:   # permite lanzarlo manualmente desde GitHub
 
 jobs:
   actualizar:
@@ -23,7 +23,7 @@ jobs:
           cache: pip
 
       - name: Instalar dependencias
-        run: pip install requests rasterio geopandas scipy numpy
+        run: pip install -r requirements.txt
 
       - name: Ejecutar script
         env:
@@ -34,6 +34,6 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add output/riesgo_incendio_municipios.csv municipios.geojson
+          git add output/riesgo_incendio_municipios.csv output/mapa_hoy.png output/mapa_meta.json municipios.geojson
           git diff --cached --quiet || git commit -m "Datos actualizados $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push
