@@ -78,7 +78,7 @@ log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# 1. Descarga y extracción
+# 1. Descarga y extracción de TIFs
 # ---------------------------------------------------------------------------
 
 def descargar_tifs(url: str, destino: Path) -> Path:
@@ -350,6 +350,7 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmpdir:
         tif_dir = descargar_tifs(AEMET_URL, Path(tmpdir) / "tifs")
         fecha_base, tif_map = detectar_fecha_y_tifs(tif_dir)
+        generar_csv(gdf, tif_map, fecha_base, OUTPUT_CSV)
 
         n_dias = max(d for (_, d) in tif_map.keys()) + 1
 
