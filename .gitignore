@@ -1,0 +1,10 @@
+# Nunca subir credenciales
+.env
+
+# Cachés de Python
+__pycache__/
+*.pyc
+
+# Archivos temporales del sistema
+.DS_Store
+Thumbs.db
