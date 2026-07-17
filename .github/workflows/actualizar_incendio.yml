@@ -2,9 +2,9 @@ name: Actualizar buscador riesgo incendio
 
 on:
   schedule:
-    # 09:00 UTC = 11:00 hora de Madrid en verano (CEST = UTC+2)
-    # En invierno (CET = UTC+1) serían las 10:00h — ajustar a "0 10 * * *" en octubre
-    - cron: "0 9 * * *"
+    # 05:00 UTC = 07:00 hora de Madrid en verano (CEST = UTC+2)
+    # En invierno (CET = UTC+1) serían las 06:00h — ajustar a "0 6 * * *" en octubre
+    - cron: "0 5 * * *"
   workflow_dispatch:   # permite lanzarlo manualmente desde GitHub
 
 jobs:
